@@ -34,7 +34,7 @@ default_args = {
 }
 
 # Definir la función para obtener los datos de COVID-19 y enviar una alerta si no hay resultados
-def get_covid_data_and_alert(**kwargs):
+def get_covid_data(**kwargs):
     url = 'https://api.covidtracking.com/v1/us/daily.json'
     response = requests.get(url)
     data = response.json()
@@ -53,13 +53,10 @@ def get_covid_data_and_alert(**kwargs):
         email_operator.execute(context=kwargs)
         raise ValueError("No se pudieron obtener datos de COVID-19.")
     
-    ti = kwargs['ti']
-    ti.xcom_push(key='covid_data', value=data)
+    return data
 
 # Definir la función para procesar los datos y crear el DataFrame limpio
-def process_covid_data(**kwargs):
-    ti = kwargs['ti']
-    data = ti.xcom_pull(task_ids='get_covid_data_task')
+def process_covid_data(data):
     columnas = ['date', 'positive', 'death', 'positiveIncrease', 'deathIncrease', 'totalTestResults', 'hospitalizedCurrently', 'recovered', 'total', 'totalTestResultsIncrease']
     datos = [{columna: registro[columna] for columna in columnas if columna in registro} for registro in data]
     df = pd.DataFrame(datos)
@@ -86,14 +83,6 @@ def process_covid_data(**kwargs):
     # Eliminar columnas con todos sus valores como NaN, None o nulos
     df_cleaned = df_cleaned.dropna(axis='columns', how='all')
 
-    # Guardar el DataFrame limpio como variable XCom para usarlo en otra tarea
-    ti.xcom_push(key='cleaned_df', value=df_cleaned)
-
-# Definir la función para calcular nuevas columnas_ new_hospitalized y death ratios
-def calculate_hospital_and_death_ratios(**kwargs):
-    ti = kwargs['ti']
-    df_cleaned = ti.xcom_pull(key='cleaned_df', task_ids='process_covid_data_task')
-
     # Calcular la columna new_hospitalized que representa la diferencia de hospitalized_currently del día y el día anterior
     df_cleaned['new_hospitalized'] = df_cleaned['hospitalized_currently'].diff()
 
@@ -101,12 +90,15 @@ def calculate_hospital_and_death_ratios(**kwargs):
     df_cleaned['tot_death_ratio'] = df_cleaned['tot_death'] / df_cleaned['tot_cases']
     df_cleaned['new_death_ratio'] = df_cleaned['new_death'] / df_cleaned['new_case']
 
-    ti.xcom_push(key='cleaned_df', value=df_cleaned)
+    # Guardar el DataFrame limpio en un archivo CSV
+    output_file = '/usr/local/airflow/data/covid_data_cleaned.csv'  # Ruta donde se guardará el archivo
+    df_cleaned.to_csv(output_file, index=False)
+
+    return output_file
 
 # Definir la función para enviar una alerta si se superan los límites
-def check_thresholds_and_send_alert(**kwargs):
-    ti = kwargs['ti']
-    df_cleaned = ti.xcom_pull(key='cleaned_df', task_ids='process_covid_data_task')
+def check_thresholds_and_send_alert(file_path):
+    df_cleaned = pd.read_csv(file_path)
 
     def send_alert_email(subject, message):
         email_operator = EmailOperator(
@@ -119,21 +111,20 @@ def check_thresholds_and_send_alert(**kwargs):
         email_operator.execute(context={})
 
     # Verificar si la variable new_death supera los 5000
-    if df_cleaned['new_death'] > 5000:
+    if df_cleaned['new_death'].max() > 5000:
         subject = f"ALERTA: Variable new_death supera los 5000"
-        message = f"La variable new_death ha superado los 5000 el día ({df_cleaned['submission_date']})."
+        message = f"La variable new_death ha superado los 5000 el día ({df_cleaned.loc[df_cleaned['new_death'].idxmax(), 'submission_date']})."
         send_alert_email(subject, message)
 
     # Verificar si el tot_death_ratio supera los 0.2
-    if df_cleaned['tot_death_ratio'] > 0.2:
+    if df_cleaned['tot_death_ratio'].max() > 0.2:
         subject = f"ALERTA: Tot_death_ratio superó el 20% "
-        message = f"El tot_death_ratio ha superado el 20% el día ({df_cleaned['submission_date']})"
+        message = f"El tot_death_ratio ha superado el 20% el día ({df_cleaned.loc[df_cleaned['tot_death_ratio'].idxmax(), 'submission_date']})"
         send_alert_email(subject, message)
 
 # Definir la función para insertar los datos en la tabla de Redshift
-def insert_into_redshift(**kwargs):
-    ti = kwargs['ti']
-    df_cleaned = ti.xcom_pull(key='cleaned_df', task_ids='process_covid_data_task')
+def insert_into_redshift(file_path):
+    df_cleaned = pd.read_csv(file_path)
 
     if df_cleaned is None or df_cleaned.empty:
         raise ValueError("DataFrame limpio no encontrado o vacío en XCom.")
@@ -187,7 +178,7 @@ def insert_into_redshift(**kwargs):
         conn.commit()
 
 # Definir la función para eliminar duplicados en la tabla de Redshift
-def remove_duplicates_from_redshift(**kwargs):
+def remove_duplicates_from_redshift():
     # Conexión a Amazon Redshift
     host = 'data-engineer-cluster.cyhh5bfevlmn.us-east-1.redshift.amazonaws.com'
     port = 5439
@@ -218,36 +209,38 @@ with DAG('covid_data_dag',
          catchup=False) as dag:
 
     # Definir la tarea para obtener datos de COVID-19 y enviar una alerta en caso de falla
-    get_covid_data_and_alert_task = PythonOperator(
-        task_id='get_covid_data_and_alert_task',
-        python_callable=get_covid_data_and_alert,
+    get_covid_data_task = PythonOperator(
+        task_id='get_covid_data_task',
+        python_callable=get_covid_data,
         provide_context=True,
     )
 
-    # Definir las tareas como PythonOperators
+    # Definir la tarea para procesar los datos y crear el DataFrame limpio
     process_covid_data_task = PythonOperator(
         task_id='process_covid_data_task',
         python_callable=process_covid_data,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
+        provide_context=True,
     )
 
-    insert_into_redshift_task = PythonOperator(
-        task_id='insert_into_redshift_task',
-        python_callable=insert_into_redshift,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
-    )
-
+    # Definir la tarea para enviar una alerta si se superan los límites
     check_thresholds_and_send_alert_task = PythonOperator(
         task_id='check_thresholds_and_send_alert_task',
         python_callable=check_thresholds_and_send_alert,
         provide_context=True,
     )
 
+    # Definir la tarea para insertar los datos en la tabla de Redshift
+    insert_into_redshift_task = PythonOperator(
+        task_id='insert_into_redshift_task',
+        python_callable=insert_into_redshift,
+        provide_context=True,
+    )
+
+    # Definir la tarea para eliminar duplicados en la tabla de Redshift
     remove_duplicates_from_redshift_task = PythonOperator(
         task_id='remove_duplicates_from_redshift_task',
         python_callable=remove_duplicates_from_redshift,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
     )
 
     # Definir las dependencias entre tareas
-    get_covid_data_and_alert_task >> process_covid_data_task >> insert_into_redshift_task >> check_thresholds_and_send_alert_task >> remove_duplicates_from_redshift_task
+    get_covid_data_task >> process_covid_data_task >> insert_into_redshift_task >> remove_duplicates_from_redshift_task >> check_thresholds_and_send_alert_task
