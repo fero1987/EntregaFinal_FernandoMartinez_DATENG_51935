@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from airflow import DAG
+from airflow.models import Variable
 from airflow.operators.python_operator import PythonOperator
 from airflow.operators.email_operator import EmailOperator
 import requests
@@ -7,16 +8,21 @@ import json
 import pandas as pd
 import psycopg2
 import numpy as np
+from email import message
+import smtplib
+email_success = 'SUCCESS'
+email_failure = 'FAILURE'
 
 # Definir argumentos del DAG
 default_args = {
-    'owner': 'airflow',
+    'owner': 'Fernando Martinez',
     'depends_on_past': False,
     'start_date': datetime(2023, 7, 1),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
     'email_on_failure': True,  # Habilitar el envío de alertas por correo electrónico en caso de falla
     'email': 'fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario para recibir alertas
+    'tags': ['Entrega Final', 'Fernando Martinez', 'DATENG_51935']
 }
 
 # Definir la función para enviar una alerta en caso de falla del DAG
@@ -103,35 +109,6 @@ def process_covid_data():
     # Devolver la ruta del archivo CSV para pasarlo a la siguiente tarea
     return file_path
 
-# Definir la función para enviar una alerta si se superan los límites
-def check_thresholds_and_send_alert(**kwargs):
-    ti = kwargs['ti']
-    file_path = ti.xcom_pull(task_ids='process_covid_data_task')
-    # Leer el DataFrame limpio desde el archivo CSV
-    df_cleaned = pd.read_csv(file_path)
-
-    def send_alert_email(subject, message):
-        email_operator = EmailOperator(
-            task_id='send_alert_email_task',
-            to='fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario
-            subject=subject,
-            html_content=message,
-            dag=dag
-        )
-        email_operator.execute(context={})
-
-    # Verificar si la variable new_death supera los 5000
-    if df_cleaned['new_death'].max() > 5000:
-        subject = f"ALERTA: Variable new_death supera los 5000"
-        message = f"La variable new_death ha superado los 5000 el día ({df_cleaned.loc[df_cleaned['new_death'].idxmax(), 'submission_date']})."
-        send_alert_email(subject, message)
-
-    # Verificar si el tot_death_ratio supera los 0.2
-    if df_cleaned['tot_death_ratio'].max() > 0.2:
-        subject = f"ALERTA: Tot_death_ratio superó el 20% "
-        message = f"El tot_death_ratio ha superado el 20% el día ({df_cleaned.loc[df_cleaned['tot_death_ratio'].idxmax(), 'submission_date']})"
-        send_alert_email(subject, message)
-
 # Definir la función para insertar los datos en la tabla de Redshift
 def insert_into_redshift(**kwargs):
     ti = kwargs['ti']
@@ -217,11 +194,52 @@ def remove_duplicates_from_redshift(**kwargs):
         cur.execute("INSERT INTO covid_data SELECT * FROM covid_data_temp;")
         cur.execute("DROP TABLE covid_data_temp;")
         conn.commit()
+# Definir la función para enviar una alerta si se superan los límites
+def enviar(alert_message):
+    try:
+        x = smtplib.SMTP('smtp.gmail.com', 587)
+        x.starttls()
+        x.login(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_PASSWORD'))
+        subject = 'Alerta: Limite superado en DAG'
+        body_text = alert_message
+        message = 'Subject: {}\n\n{}'.format(subject, body_text)
+        x.sendmail(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_EMAIL_TO'), message)
+        print('Exito al enviar el mail')
+    except Exception as exception:
+        print(exception)
+        print('Fallo al enviar el mail')
+        
+def check_thresholds_and_send_alert(conf, **kwargs):
+    # Leer el DataFrame limpio desde el archivo CSV
+    file_path = '/usr/local/airflow/data/covid_data_cleaned.csv'
+    df_cleaned = pd.read_csv(file_path)
+
+    def send_alert(subject, message):
+        email_operator = EmailOperator(
+            task_id='send_alert_email_task',
+            to='fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario
+            subject=subject,
+            html_content=message,
+            dag=dag
+        )
+        email_operator.execute(context={})
+
+    # Verificar si la variable new_death supera los 5000
+    if df_cleaned['new_death'].max() > 5000:
+        subject = f"ALERTA: Variable new_death supera los 5000"
+        message = f"La variable new_death ha superado los 5000 el dia ({df_cleaned.loc[df_cleaned['new_death'].idxmax(), 'submission_date']})."
+        enviar(f"{subject}\n\n{message}")
+
+    # Verificar si el tot_death_ratio supera los 0.2
+    if df_cleaned['tot_death_ratio'].max() > 0.2:
+        subject = f"ALERTA: Tot_death_ratio superó el 20 por ciento"
+        message = f"El tot_death_ratio ha superado el 20 por ciento el dia ({df_cleaned.loc[df_cleaned['tot_death_ratio'].idxmax(), 'submission_date']})"
+        enviar(f"{subject}\n\n{message}")
 
 # Definir el DAG
 with DAG('covid_data_dag', 
          default_args=default_args, 
-         schedule_interval=timedelta(days=1),
+         schedule_interval='@daily',
          catchup=False) as dag:
 
     # Definir la tarea para obtener datos de COVID-19
@@ -238,13 +256,6 @@ with DAG('covid_data_dag',
         provide_context=False,  # No es necesario pasar el contexto a esta función
     )
 
-    # Definir la tarea para enviar una alerta si se superan los límites
-    check_thresholds_and_send_alert_task = PythonOperator(
-        task_id='check_thresholds_and_send_alert_task',
-        python_callable=check_thresholds_and_send_alert,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
-    )
-
     # Definir la tarea para insertar datos en Redshift
     insert_into_redshift_task = PythonOperator(
         task_id='insert_into_redshift_task',
@@ -256,6 +267,13 @@ with DAG('covid_data_dag',
     remove_duplicates_from_redshift_task = PythonOperator(
         task_id='remove_duplicates_from_redshift_task',
         python_callable=remove_duplicates_from_redshift,
+        provide_context=True,  # Pasar el contexto, incluido 'ti'
+    )
+
+        # Definir la tarea para enviar una alerta si se superan los límites
+    check_thresholds_and_send_alert_task = PythonOperator(
+        task_id='check_thresholds_and_send_alert_task',
+        python_callable=check_thresholds_and_send_alert,
         provide_context=True,  # Pasar el contexto, incluido 'ti'
     )
 
