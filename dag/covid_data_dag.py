@@ -18,7 +18,8 @@ default_args = {
     'retry_delay': timedelta(minutes=5),
     'email_on_failure': True,
     'email': 'fgmartinez87@gmail.com',
-    'tags': ['Entrega Final', 'Fernando Martinez', 'DATENG_51935']
+    'tags': ['Entrega Final', 'Fernando Martinez', 'DATENG_51935'],
+    'catchup': True,
 }
 
 # Definir la función para enviar un mail
