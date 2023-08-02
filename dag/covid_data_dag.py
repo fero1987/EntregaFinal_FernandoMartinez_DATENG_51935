@@ -1,17 +1,13 @@
 from datetime import datetime, timedelta
 from airflow import DAG
-from airflow.models import Variable
 from airflow.operators.python_operator import PythonOperator
-from airflow.operators.email_operator import EmailOperator
 import requests
 import json
 import pandas as pd
-import psycopg2
 import numpy as np
-from email import message
 import smtplib
-email_success = 'SUCCESS'
-email_failure = 'FAILURE'
+import psycopg2
+from airflow.models import Variable
 
 # Definir argumentos del DAG
 default_args = {
@@ -20,8 +16,8 @@ default_args = {
     'start_date': datetime(2023, 7, 1),
     'retries': 1,
     'retry_delay': timedelta(minutes=5),
-    'email_on_failure': True,  # Habilitar el envío de alertas por correo electrónico en caso de falla
-    'email': 'fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario para recibir alertas
+    'email_on_failure': True,
+    'email': 'fgmartinez87@gmail.com',
     'tags': ['Entrega Final', 'Fernando Martinez', 'DATENG_51935']
 }
 
@@ -33,12 +29,11 @@ def enviar(alert_message):
         x.login(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_PASSWORD'))
         subject = 'Alerta Automatica Generada'
         body_text = alert_message
-        message = 'Subject: {}\n\n{}'.format(subject, body_text)
+        message = f'Subject: {subject}\n\n{body_text}'
         x.sendmail(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_EMAIL_TO'), message)
-        print('Exito al enviar el mail')
-    except Exception as exception:
-        print(exception)
-        print('Fallo al enviar el mail')
+        print('Éxito al enviar el mail')
+    except Exception as e:
+        print(f'Fallo al enviar el mail: {e}')
 
 # Definir la función para obtener los datos de COVID-19 y enviar una alerta si no hay resultados
 def get_covid_data():
@@ -51,7 +46,7 @@ def get_covid_data():
     with open(file_path, 'w') as file:
         json.dump(data, file)
 
-    if data is None or len(data) == 0:
+    if not data:
         # Enviar alerta por correo electrónico usando la función enviar
         subject = "ALERTA: No se pudieron obtener datos de COVID19"
         message = "No se encontraron datos de COVID19 en la API."
@@ -67,7 +62,8 @@ def process_covid_data():
     with open(file_path, 'r') as file:
         data = json.load(file)
 
-    columnas = ['date', 'positive', 'death', 'positiveIncrease', 'deathIncrease', 'totalTestResults', 'hospitalizedCurrently', 'recovered', 'total', 'totalTestResultsIncrease']
+    columnas = ['date', 'positive', 'death', 'positiveIncrease', 'deathIncrease', 'totalTestResults',
+                'hospitalizedCurrently', 'recovered', 'total', 'totalTestResultsIncrease']
     datos = [{columna: registro[columna] for columna in columnas if columna in registro} for registro in data]
     df = pd.DataFrame(datos)
     nombres_columnas = {
@@ -84,10 +80,10 @@ def process_covid_data():
     }
     df = df.rename(columns=nombres_columnas)
 
-    # Eliminar filas con todos sus valores cero, NaN, None o nulos
+    # Eliminar filas con todos sus valores cero, NaN o nulos
     columns_to_check = df.columns[1:]
     df_cleaned = df.dropna(subset=columns_to_check, how='all')
-    df_cleaned = df_cleaned.replace({0: np.nan, 'None': np.nan, None: np.nan})
+    df_cleaned = df_cleaned.replace({0: np.nan})
     df_cleaned = df_cleaned.dropna(how='all', subset=columns_to_check)
     
     # Calcular la columna new_hospitalized que representa la diferencia de hospitalized_currently del día y el día anterior
@@ -111,7 +107,7 @@ def insert_into_redshift(**kwargs):
     # Leer el DataFrame limpio desde el archivo CSV
     df_cleaned = pd.read_csv(file_path)
 
-    if df_cleaned is None or df_cleaned.empty:
+    if df_cleaned.empty:
         raise ValueError("DataFrame limpio no encontrado o vacío en XCom.")
 
     # Agregar una columna con la hora actual
@@ -196,15 +192,15 @@ def check_thresholds_and_send_alert(conf, **kwargs):
     df_cleaned = pd.read_csv(file_path)
 
     # Iterar sobre cada fila del DataFrame y verificar los límites
-    for index, row in df_cleaned.iterrows():
+    for _, row in df_cleaned.iterrows():
         if row['new_death'] > 5000:
             subject = f"ALERTA: new_death supero los 5000"
             message = f"La variable new_death ha superado los 5000 el dia ({row['submission_date']})."
             enviar(f"{subject}\n\n{message}")
 
         if row['tot_death_ratio'] > 0.2:
-            subject = f"ALERTA: Tot_death_ratio supero el 20 por ciento"
-            message = f"La variable  tot_death_ratio ha superado el 20 por ciento el dia ({row['submission_date']})."
+            subject = f"ALERTA: tot_death_ratio supero el 20 por ciento"
+            message = f"La variable tot_death_ratio ha superado el 20 por ciento el dia ({row['submission_date']})."
             enviar(f"{subject}\n\n{message}")
 
 # Definir el DAG
@@ -217,37 +213,36 @@ with DAG('covid_data_dag',
     get_covid_data_task = PythonOperator(
         task_id='get_covid_data_task',
         python_callable=get_covid_data,
-        provide_context=False,  # No es necesario pasar el contexto a esta función
+        provide_context=False,
     )
 
     # Definir la tarea para procesar los datos de COVID-19 y crear el DataFrame limpio
     process_covid_data_task = PythonOperator(
         task_id='process_covid_data_task',
         python_callable=process_covid_data,
-        provide_context=False,  # No es necesario pasar el contexto a esta función
+        provide_context=False,
     )
 
     # Definir la tarea para insertar datos en Redshift
     insert_into_redshift_task = PythonOperator(
         task_id='insert_into_redshift_task',
         python_callable=insert_into_redshift,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
+        provide_context=True,
     )
 
     # Definir la tarea para eliminar duplicados en la tabla de Redshift
     remove_duplicates_from_redshift_task = PythonOperator(
         task_id='remove_duplicates_from_redshift_task',
         python_callable=remove_duplicates_from_redshift,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
+        provide_context=True,
     )
 
-        # Definir la tarea para enviar una alerta si se superan los límites
+    # Definir la tarea para enviar una alerta si se superan los límites
     check_thresholds_and_send_alert_task = PythonOperator(
         task_id='check_thresholds_and_send_alert_task',
         python_callable=check_thresholds_and_send_alert,
-        provide_context=True,  # Pasar el contexto, incluido 'ti'
+        provide_context=True,
     )
 
     # Definir las dependencias entre tareas
     get_covid_data_task >> process_covid_data_task >> insert_into_redshift_task >> remove_duplicates_from_redshift_task >> check_thresholds_and_send_alert_task
-
