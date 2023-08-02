@@ -25,18 +25,20 @@ default_args = {
     'tags': ['Entrega Final', 'Fernando Martinez', 'DATENG_51935']
 }
 
-# Definir la función para enviar una alerta en caso de falla del DAG
-def send_failure_alert(context):
-    subject = "ALERTA: Falla en el DAG covid_data_dag"
-    message = "El DAG covid_data_dag ha fallado en su ejecución."
-    email_operator = EmailOperator(
-        task_id='send_failure_email_task',
-        to='fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario
-        subject=subject,
-        html_content=message,
-        dag=dag
-    )
-    email_operator.execute(context=context)
+# Definir la función para enviar un mail
+def enviar(alert_message):
+    try:
+        x = smtplib.SMTP('smtp.gmail.com', 587)
+        x.starttls()
+        x.login(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_PASSWORD'))
+        subject = 'Alerta Automática Generada'
+        body_text = alert_message
+        message = 'Subject: {}\n\n{}'.format(subject, body_text)
+        x.sendmail(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_EMAIL_TO'), message)
+        print('Exito al enviar el mail')
+    except Exception as exception:
+        print(exception)
+        print('Fallo al enviar el mail')
 
 # Definir la función para obtener los datos de COVID-19 y enviar una alerta si no hay resultados
 def get_covid_data():
@@ -48,21 +50,14 @@ def get_covid_data():
     file_path = '/usr/local/airflow/data/covid_data.json'
     with open(file_path, 'w') as file:
         json.dump(data, file)
-    
-    if data is None or len(data) == 0:
-        # Enviar alerta por correo electrónico
-        subject = "ALERTA: No se pudieron obtener datos de COVID-19"
-        message = "No se encontraron datos de COVID-19 en la API."
-        email_operator = EmailOperator(
-            task_id='send_email_task',
-            to='fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario
-            subject=subject,
-            html_content=message,
-            dag=dag
-        )
-        email_operator.execute(context={})
-        raise ValueError("No se pudieron obtener datos de COVID-19.")
-    
+
+    if data is  None or len(data) == 0:
+        # Enviar alerta por correo electrónico usando la función enviar
+        subject = "ALERTA: No se pudieron obtener datos de COVID19"
+        message = "No se encontraron datos de COVID19 en la API."
+        enviar(f"{subject}\n\n{message}")
+        raise ValueError("No se pudieron obtener datos de COVID19.")
+
     return data
 
 # Definir la función para procesar los datos y crear el DataFrame limpio
@@ -194,20 +189,6 @@ def remove_duplicates_from_redshift(**kwargs):
         cur.execute("INSERT INTO covid_data SELECT * FROM covid_data_temp;")
         cur.execute("DROP TABLE covid_data_temp;")
         conn.commit()
-# Definir la función para enviar una alerta si se superan los límites
-def enviar(alert_message):
-    try:
-        x = smtplib.SMTP('smtp.gmail.com', 587)
-        x.starttls()
-        x.login(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_PASSWORD'))
-        subject = 'Alerta: Limite superado en DAG'
-        body_text = alert_message
-        message = 'Subject: {}\n\n{}'.format(subject, body_text)
-        x.sendmail(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_EMAIL_TO'), message)
-        print('Exito al enviar el mail')
-    except Exception as exception:
-        print(exception)
-        print('Fallo al enviar el mail')
         
 def check_thresholds_and_send_alert(conf, **kwargs):
     # Leer el DataFrame limpio desde el archivo CSV
@@ -217,13 +198,13 @@ def check_thresholds_and_send_alert(conf, **kwargs):
     # Iterar sobre cada fila del DataFrame y verificar los límites
     for index, row in df_cleaned.iterrows():
         if row['new_death'] > 5000:
-            subject = f"ALERTA: Variable new_death supero los 5000"
-            message = f"La variable new_death ha superado los 5000 el dia ({row['submission_date']})."
+            subject = f"ALERTA: new_death supero los 5000"
+            message = f"La variable new_death ha superado los 5000 el dia {row['submission_date']}"
             enviar(f"{subject}\n\n{message}")
 
         if row['tot_death_ratio'] > 0.2:
             subject = f"ALERTA: Tot_death_ratio supero el 20 por ciento"
-            message = f"El tot_death_ratio ha superado el 20 por ciento el dia ({row['submission_date']})"
+            message = f"La variable  tot_death_ratio ha superado el 20 por ciento el dia {row['submission_date']}"
             enviar(f"{subject}\n\n{message}")
 
 # Definir el DAG
