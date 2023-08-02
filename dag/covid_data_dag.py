@@ -31,7 +31,7 @@ def enviar(alert_message):
         x = smtplib.SMTP('smtp.gmail.com', 587)
         x.starttls()
         x.login(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_PASSWORD'))
-        subject = 'Alerta Automática Generada'
+        subject = 'Alerta Automatica Generada'
         body_text = alert_message
         message = 'Subject: {}\n\n{}'.format(subject, body_text)
         x.sendmail(Variable.get('SMTP_EMAIL_FROM'), Variable.get('SMTP_EMAIL_TO'), message)
@@ -51,7 +51,7 @@ def get_covid_data():
     with open(file_path, 'w') as file:
         json.dump(data, file)
 
-    if data is  None or len(data) == 0:
+    if data is None or len(data) == 0:
         # Enviar alerta por correo electrónico usando la función enviar
         subject = "ALERTA: No se pudieron obtener datos de COVID19"
         message = "No se encontraron datos de COVID19 en la API."
@@ -199,12 +199,12 @@ def check_thresholds_and_send_alert(conf, **kwargs):
     for index, row in df_cleaned.iterrows():
         if row['new_death'] > 5000:
             subject = f"ALERTA: new_death supero los 5000"
-            message = f"La variable new_death ha superado los 5000 el dia {row['submission_date']}"
+            message = f"La variable new_death ha superado los 5000 el dia ({row['submission_date']})."
             enviar(f"{subject}\n\n{message}")
 
         if row['tot_death_ratio'] > 0.2:
             subject = f"ALERTA: Tot_death_ratio supero el 20 por ciento"
-            message = f"La variable  tot_death_ratio ha superado el 20 por ciento el dia {row['submission_date']}"
+            message = f"La variable  tot_death_ratio ha superado el 20 por ciento el dia ({row['submission_date']})."
             enviar(f"{subject}\n\n{message}")
 
 # Definir el DAG
