@@ -214,27 +214,17 @@ def check_thresholds_and_send_alert(conf, **kwargs):
     file_path = '/usr/local/airflow/data/covid_data_cleaned.csv'
     df_cleaned = pd.read_csv(file_path)
 
-    def send_alert(subject, message):
-        email_operator = EmailOperator(
-            task_id='send_alert_email_task',
-            to='fgmartinez87@gmail.com',  # Reemplaza con el correo electrónico destinatario
-            subject=subject,
-            html_content=message,
-            dag=dag
-        )
-        email_operator.execute(context={})
+    # Iterar sobre cada fila del DataFrame y verificar los límites
+    for index, row in df_cleaned.iterrows():
+        if row['new_death'] > 5000:
+            subject = f"ALERTA: Variable new_death supero los 5000"
+            message = f"La variable new_death ha superado los 5000 el dia ({row['submission_date']})."
+            enviar(f"{subject}\n\n{message}")
 
-    # Verificar si la variable new_death supera los 5000
-    if df_cleaned['new_death'].max() > 5000:
-        subject = f"ALERTA: Variable new_death supera los 5000"
-        message = f"La variable new_death ha superado los 5000 el dia ({df_cleaned.loc[df_cleaned['new_death'].idxmax(), 'submission_date']})."
-        enviar(f"{subject}\n\n{message}")
-
-    # Verificar si el tot_death_ratio supera los 0.2
-    if df_cleaned['tot_death_ratio'].max() > 0.2:
-        subject = f"ALERTA: Tot_death_ratio superó el 20 por ciento"
-        message = f"El tot_death_ratio ha superado el 20 por ciento el dia ({df_cleaned.loc[df_cleaned['tot_death_ratio'].idxmax(), 'submission_date']})"
-        enviar(f"{subject}\n\n{message}")
+        if row['tot_death_ratio'] > 0.2:
+            subject = f"ALERTA: Tot_death_ratio supero el 20 por ciento"
+            message = f"El tot_death_ratio ha superado el 20 por ciento el dia ({row['submission_date']})"
+            enviar(f"{subject}\n\n{message}")
 
 # Definir el DAG
 with DAG('covid_data_dag', 
