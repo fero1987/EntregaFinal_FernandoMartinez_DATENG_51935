@@ -1,3 +1,4 @@
+# Importar librerías
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python_operator import PythonOperator
@@ -120,7 +121,7 @@ def insert_into_redshift(**kwargs):
     port = 5439
     database = 'data-engineer-database'
     user = 'fgmartinez87_coderhouse'
-    password = '7c92hMs3M1'  # Ver contraseña en la entrega
+    password = 'xxx' # Ver contraseña en la entrega
 
     conn = psycopg2.connect(
         host=host,
@@ -169,7 +170,7 @@ def remove_duplicates_from_redshift(**kwargs):
     port = 5439
     database = 'data-engineer-database'
     user = 'fgmartinez87_coderhouse'
-    password = '7c92hMs3M1'  # Ver contraseña en la entrega
+    password = 'xxx'  # Ver contraseña en la entrega
 
     conn = psycopg2.connect(
         host=host,
@@ -186,7 +187,8 @@ def remove_duplicates_from_redshift(**kwargs):
         cur.execute("INSERT INTO covid_data SELECT * FROM covid_data_temp;")
         cur.execute("DROP TABLE covid_data_temp;")
         conn.commit()
-        
+
+# Definir la función para verificar los límites y enviar alertas 
 def check_thresholds_and_send_alert(conf, **kwargs):
     # Leer el DataFrame limpio desde el archivo CSV
     file_path = '/usr/local/airflow/data/covid_data_cleaned.csv'
