@@ -10,11 +10,11 @@
 
 4) Creo el container con el comando **docker build -t imagen1 .**
 
-![image](https://github.com/fero1987/Curso-DE-CoderHouse/assets/50931047/d3495506-1982-4f35-80e7-9f781823907b)
+<img width="517" alt="image" src="https://github.com/fero1987/EntregaFinal_FernandoMartinez_DATENG_51935/assets/50931047/6e02d83e-5d74-4176-a6cd-d47abdb80cf2">
 
 5) Corro el container con el comando **docker run -d -p 8080:8080 imagen1**
 
-![image](https://github.com/fero1987/Curso-DE-CoderHouse/assets/50931047/7815c98c-399a-4615-a758-d5c6fb325dcd)
+<img width="536" alt="image" src="https://github.com/fero1987/EntregaFinal_FernandoMartinez_DATENG_51935/assets/50931047/44c96870-9647-4019-ad42-2b3ab03f5a9d">
 
 6) Configuro gmail para poder conectarse a Airflow y enviar alertas por mail. Para ello voy a la siguiente [opción](https://myaccount.google.com/apppasswords?rapt=AEjHL4OW1Yc9EGv4-imaBzNgJ35rPY_TU3WY50K3s7ZiOs-azV6__w84ZGdXsvfWaoq7w_oKP-i5y0Se0Fpo0SAt0Lsf5cad2Q) dentro de gmail para configurar la contraseña de las aplicaciones. Esta contraseña se utilizará a la hora de configurar la variable SMTP_PASSWORD dentro de Airflow.
 
