@@ -2,7 +2,7 @@
 
 1) Como primer paso obtenemos la siguiente imagen de Docker Hub a nuestra máquina local (https://hub.docker.com/r/puckel/docker-airflow) mediante el comando **docker pull puckel/docker-airflow** 
 
-2) Creo la carpeta "dag" y la carpeta "data" dentro del repositorio. En la carpeta "dag" guardo el script con el nombre covid_data_dag.py. La carpeta "data" se utilizará para guardar el Dataframe
+2) Creo la carpeta "dag" y la carpeta "data" dentro del repositorio. En la carpeta "dag" guardo el script con el nombre covid_data_dag.py. La carpeta "data" se utilizará para guardar el Dataframe.
 
 3) Creo el Dockerfile con el siguiente script.
 
