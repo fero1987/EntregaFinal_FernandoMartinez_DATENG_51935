@@ -2,7 +2,7 @@
 
 1) Como primer paso obtenemos la siguiente imagen de Docker Hub a nuestra máquina local (https://hub.docker.com/r/puckel/docker-airflow) mediante el comando **docker pull puckel/docker-airflow** 
 
-2) Creo la carpeta "dag" y la carpeta "data" dentro del repositorio. En la carpeta "dag" guardo el script con el nombre covid_data_dag.py. La carpeta "data" se utlizará para guardar el Dataframe
+2) Creo la carpeta "dag" y la carpeta "data" dentro del repositorio. En la carpeta "dag" guardo el script con el nombre covid_data_dag.py. La carpeta "data" se utilizará para guardar el Dataframe
 
 3) Creo el Dockerfile con el siguiente script.
 
@@ -16,7 +16,7 @@
 
 ![image](https://github.com/fero1987/Curso-DE-CoderHouse/assets/50931047/7815c98c-399a-4615-a758-d5c6fb325dcd)
 
-6) Configuro gmail para poder conectarse a Airflow y enviar alertas por mail. Para ello voy a la siguiente [opción](https://myaccount.google.com/apppasswords?rapt=AEjHL4OW1Yc9EGv4-imaBzNgJ35rPY_TU3WY50K3s7ZiOs-azV6__w84ZGdXsvfWaoq7w_oKP-i5y0Se0Fpo0SAt0Lsf5cad2Q) dentro de gmail para configurar la contraseña de las aplicaciones. Esta contraseña se utilizará  al hora de configurar la variable SMTP_PASSWORD dentro de Airflow.
+6) Configuro gmail para poder conectarse a Airflow y enviar alertas por mail. Para ello voy a la siguiente [opción](https://myaccount.google.com/apppasswords?rapt=AEjHL4OW1Yc9EGv4-imaBzNgJ35rPY_TU3WY50K3s7ZiOs-azV6__w84ZGdXsvfWaoq7w_oKP-i5y0Se0Fpo0SAt0Lsf5cad2Q) dentro de gmail para configurar la contraseña de las aplicaciones. Esta contraseña se utilizará a la hora de configurar la variable SMTP_PASSWORD dentro de Airflow.
 
 ![image](https://github.com/fero1987/EntregaFinal_FernandoMartinez_DATENG_51935/assets/50931047/f9c31b43-183e-4592-8a83-f7ef6b62fa65)
 
